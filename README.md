@@ -16,5 +16,11 @@ The recursive function repeatedly moves smaller disk sets between rods until the
 - CSS
 - JavaScript
 
+## Live Demo
+https://yamzxx.github.io/LFX_Tower-of-Hanoi/
+
+## GitHub Repository
+https://github.com/yamzxx/LFX_Tower-of-Hanoi
+
 ## Author
 Yamini
