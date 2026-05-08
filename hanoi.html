@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tower of Hanoi — RISC-V Demo</title>
+<style>
+  /*
+   * ─────────────────────────────────────────────────────────────
+   *  TOWER OF HANOI — RISC-V High Precision Code Base Demo
+   *  Demonstrates:
+   *    • RECURSION  — hanoi() calls itself twice per n, depth-first
+   *    • ITERATION  — render() loops peg × disk; timer steps moves
+   * ─────────────────────────────────────────────────────────────
+   */
+  :root {
+    --bg:    #0d1117;  --bg2: #161b22; --border: #30363d;
+    --text:  #e6edf3;  --dim:  #8b949e;
+    --disk1: #e24b4a;  --disk2: #ef9f27; --disk3: #63a522;
+    --disk4: #1d9e75;  --disk5: #378add; --disk6: #7f77dd;
+    --disk7: #d4537e;
+    --mono: 'Courier New', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--mono); min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 2rem 1rem;
+  }
+  h1 { font-size: 1.1rem; font-weight: 400; letter-spacing: .05em;
+       color: var(--dim); margin-bottom: .5rem; }
+  h1 strong { color: var(--text); }
+
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.5rem; width: 100%; max-width: 680px;
+    margin-top: 1rem;
+  }
+
+  .controls {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    align-items: center; margin-bottom: 1.25rem;
+  }
+  .controls label { font-size: .75rem; color: var(--dim); }
+  select, button {
+    font-family: var(--mono); font-size: .78rem;
+    padding: 5px 12px; border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: #58a6ff; }
+  button:disabled { opacity: .35; cursor: default; }
+
+  canvas { width: 100%; display: block; border-radius: 4px; }
+
+  .stats {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-top: 1rem;
+  }
+  .stat {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 4px 10px; font-size: .72rem; color: var(--dim);
+  }
+  .stat span { color: var(--text); }
+
+  #log {
+    margin-top: .75rem; font-size: .7rem; color: var(--dim);
+    max-height: 64px; overflow-y: auto; line-height: 1.8;
+    border-top: 1px solid var(--border); padding-top: 6px;
+  }
+
+  .annotation {
+    margin-top: 1.5rem; padding: 1rem 1.25rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: .78rem; line-height: 1.9; color: var(--dim);
+    max-width: 680px;
+  }
+  .annotation code { color: #79c0ff; }
+  .annotation strong { color: var(--text); }
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 3px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .05em;
+    margin-right: 4px;
+  }
+  .tag.rec { background: #1f3b2e; color: #3fb950; border: 1px solid #2ea043; }
+  .tag.itr { background: #1a2d4a; color: #58a6ff; border: 1px solid #1f6feb; }
+</style>
+</head>
+<body>
+
+<h1>⚙ <strong>Tower of Hanoi</strong> — RISC-V High Precision Demo</h1>
+
+<div class="card">
+  <div class="controls">
+    <label>Disks</label>
+    <select id="disk-sel">
+      <option value="3">3</option>
+      <option value="4" selected>4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+    </select>
+    <label>Speed</label>
+    <select id="speed-sel">
+      <option value="800">slow</option>
+      <option value="380" selected>medium</option>
+      <option value="120">fast</option>
+      <option value="25">blitz</option>
+    </select>
+    <button id="btn-play">▶  Solve</button>
+    <button id="btn-reset">↺  Reset</button>
+    <button id="btn-step">Step →</button>
+  </div>
+
+  <canvas id="canvas" height="270"></canvas>
+
+  <div class="stats">
+    <div class="stat">Move <span id="move-num">0</span> / <span id="move-tot">15</span></div>
+    <div class="stat">Optimal: <span id="opt">15</span></div>
+    <div class="stat">Recursion depth: <span id="depth">0</span></div>
+    <div class="stat">Status: <span id="status">ready</span></div>
+  </div>
+  <div id="log"></div>
+</div>
+
+<div class="annotation">
+  <p>
+    <span class="tag rec">RECURSION</span>
+    <code>hanoi(n, src, dst, aux)</code> is the classic divide-and-conquer solver.<br>
+    It calls itself <em>twice</em> for each n &gt; 0, with a decreasing sub-problem:<br>
+    &nbsp; ① <code>hanoi(n-1, src, aux, dst)</code> — clear the top n-1 disks<br>
+    &nbsp; ② move disk n from src → dst<br>
+    &nbsp; ③ <code>hanoi(n-1, aux, dst, src)</code> — restack on top<br>
+    Base case: n=0 → return immediately. Total moves = 2ⁿ − 1 (optimal).
+  </p>
+  <br>
+  <p>
+    <span class="tag itr">ITERATION</span>
+    <code>render()</code> redraws the canvas by iterating over the three pegs
+    and the disk stack within each peg. The auto-play timer iterates through
+    the pre-computed move list at a configurable interval.
+  </p>
+</div>
+
+<script>
+/*
+ * ═══════════════════════════════════════════════════════════════
+ *  RECURSION — pure move generator
+ *
+ *  hanoi(n, src, dst, aux, depth, out) pre-computes all moves
+ *  into the `out` array without touching the DOM.  This cleanly
+ *  separates the recursive algorithm from the rendering loop.
+ * ═══════════════════════════════════════════════════════════════
+ */
+function hanoi(n, src, dst, aux, depth, out) {
+  if (n === 0) return;                           // BASE CASE — unwind
+  hanoi(n - 1, src, aux, dst, depth + 1, out); // RECURSIVE CALL ①
+  out.push({ src, dst, disk: n, depth });        // record the move
+  hanoi(n - 1, aux, dst, src, depth + 1, out); // RECURSIVE CALL ②
+}
+
+/*
+ * ═══════════════════════════════════════════════════════════════
+ *  ITERATION — canvas renderer
+ *
+ *  render() loops over each peg (outer) and each disk (inner),
+ *  drawing proportional coloured bars.  Called once per move.
+ * ═══════════════════════════════════════════════════════════════
+ */
+const DISK_COLORS = [
+  '#e24b4a','#ef9f27','#63a522','#1d9e75','#378add','#7f77dd','#d4537e'
+];
+
+let pegs, moves, moveIdx, playing, timer, numDisks, delay;
+
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const btnPlay = document.getElementById('btn-play');
+const btnReset= document.getElementById('btn-reset');
+const btnStep = document.getElementById('btn-step');
+const diskSel = document.getElementById('disk-sel');
+const spdSel  = document.getElementById('speed-sel');
+const moveNum = document.getElementById('move-num');
+const moveTot = document.getElementById('move-tot');
+const optEl   = document.getElementById('opt');
+const depthEl = document.getElementById('depth');
+const statEl  = document.getElementById('status');
+const logEl   = document.getElementById('log');
+
+function render() {
+  const W = canvas.offsetWidth || 640;
+  canvas.width  = W;
+  canvas.height = 270;
+  ctx.clearRect(0, 0, W, 270);
+
+  const pegX    = [W * 0.18, W * 0.50, W * 0.82];
+  const baseY   = 220;
+  const poleH   = 170;
+  const poleW   = 5;
+  const maxDW   = Math.min(W * 0.28, 140);
+  const diskH   = Math.max(14, Math.floor(poleH / (numDisks + 1)));
+  const labels  = ['A  (start)', 'B  (aux)', 'C  (goal)'];
+
+  /* ITERATE over each of the three pegs */
+  for (let p = 0; p < 3; p++) {
+    const cx = pegX[p];
+
+    /* pole */
+    ctx.fillStyle = '#30363d';
+    ctx.fillRect(cx - poleW / 2, baseY - poleH, poleW, poleH);
+
+    /* base platform */
+    ctx.fillStyle = '#444c56';
+    ctx.fillRect(cx - maxDW / 2 - 6, baseY, maxDW + 12, 7);
+
+    /* peg label */
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[p], cx, baseY + 26);
+
+    /* ITERATE over disks stacked on this peg */
+    for (let d = 0; d < pegs[p].length; d++) {
+      const disk  = pegs[p][d];
+      const ratio = disk / numDisks;
+      const dw    = maxDW * 0.25 + maxDW * 0.75 * ratio;
+      const dy    = baseY - (d + 1) * diskH;
+      const color = DISK_COLORS[(disk - 1) % DISK_COLORS.length];
+
+      /* draw disk body */
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(cx - dw / 2, dy, dw, diskH - 2, 5);
+      ctx.fill();
+
+      /* disk size label */
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.font = `${Math.max(9, diskH - 5)}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(disk, cx, dy + diskH - 5);
+    }
+  }
+}
+
+function applyMove() {
+  if (moveIdx >= moves.length) return false;
+  const m = moves[moveIdx++];
+  pegs[m.dst].push(pegs[m.src].pop());
+  moveNum.textContent = moveIdx;
+  depthEl.textContent = m.depth;
+  statEl.textContent  = moveIdx === moves.length ? 'done ✓' : 'solving…';
+  logEl.innerHTML    += `<div>#${moveIdx}: disk ${m.disk} &nbsp;`
+    + `${String.fromCharCode(65 + m.src)} → ${String.fromCharCode(65 + m.dst)}`
+    + ` &nbsp;(recursion depth ${m.depth})</div>`;
+  logEl.scrollTop = logEl.scrollHeight;
+  render();
+  return moveIdx < moves.length;
+}
+
+function reset() {
+  clearInterval(timer);
+  playing  = false;
+  numDisks = +diskSel.value;
+  delay    = +spdSel.value;
+  pegs     = [
+    Array.from({ length: numDisks }, (_, i) => numDisks - i),
+    [], []
+  ];
+  moves    = [];
+  moveIdx  = 0;
+
+  /* Pre-compute moves via RECURSION */
+  hanoi(numDisks, 0, 2, 1, 1, moves);
+
+  const total = moves.length;
+  moveTot.textContent = optEl.textContent = total;
+  moveNum.textContent = '0';
+  depthEl.textContent = '0';
+  statEl.textContent  = 'ready';
+  logEl.innerHTML     = '';
+  btnPlay.textContent = '▶  Solve';
+  btnPlay.disabled    = false;
+  btnStep.disabled    = false;
+  render();
+}
+
+function togglePlay() {
+  if (playing) {
+    clearInterval(timer);
+    playing = false;
+    btnPlay.textContent = '▶  Solve';
+  } else {
+    if (moveIdx >= moves.length) return;
+    playing = true;
+    btnPlay.textContent = '⏸  Pause';
+    /* ITERATION: timer repeatedly steps through the move list */
+    timer = setInterval(() => {
+      const more = applyMove();
+      if (!more) {
+        clearInterval(timer);
+        playing = false;
+        btnPlay.textContent = '▶  Solve';
+        btnPlay.disabled    = true;
+        btnStep.disabled    = true;
+      }
+    }, delay);
+  }
+}
+
+btnPlay.addEventListener('click', togglePlay);
+btnReset.addEventListener('click', reset);
+btnStep.addEventListener('click', () => { if (!playing) applyMove(); });
+diskSel.addEventListener('change', reset);
+spdSel.addEventListener('change', () => {
+  delay = +spdSel.value;
+  if (playing) {
+    clearInterval(timer);
+    timer = setInterval(() => {
+      const more = applyMove();
+      if (!more) {
+        clearInterval(timer); playing = false;
+        btnPlay.textContent = '▶  Solve';
+        btnPlay.disabled = btnStep.disabled = true;
+      }
+    }, delay);
+  }
+});
+window.addEventListener('resize', render);
+
+reset();
+</script>
+</body>
+</html>
